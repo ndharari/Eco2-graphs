@@ -1,6 +1,11 @@
 ### A Pluto.jl notebook ###
 # v0.19.27
 
+#> [frontmatter]
+#> Author = "Nicolás Harari"
+#> title = "Gráficos del modelo de Equilibrio General"
+#> date = "2023-08-01"
+
 using Markdown
 using InteractiveUtils
 
@@ -16,15 +21,24 @@ end
 
 # ╔═╡ a7b277f7-2e49-4b61-95a7-5e25de24380f
 begin
-	using PlutoUI, NLsolve, Plots
-	plotly()
-	html"<p style='font-style: italic; text-align:right'> Nicolás Harari, Agosto 2023</p>"
+    using PlutoUI, Roots, Plots, LaTeXStrings
+    plotly()
+    html"<p style='font-style: italic; text-align:right'> Nicolás Harari, Agosto 2023</p>"
 end
+
+# ╔═╡ e9a2cac2-8d92-41b9-a94a-10aa02dc67de
+html"""<style>
+main {
+    max-width: 70%;
+    margin-left: 13%;
+    margin-right: 17% !important;
+}
+"""
 
 # ╔═╡ 928f5541-4bfd-451a-a150-b7c81c6fc0d3
 md"""
 # Gráficos del modelo de Equilibrio General
-En este notebook vtamos a resolver el modelo que vemos en clase de Eco 2.
+En este notebook vamos a resolver el modelo que vemos en clase de Eco 2.
 Tenemos:
 1. En $t=1$:
    -  Un **mercado de trabajo** que determina $L_1$
@@ -39,129 +53,173 @@ Tenemos:
 # ╔═╡ 50a2af8b-ded7-4b3b-a62e-71bca381fd5d
 md"""## Parámetros
 Definimos los parámetros de nuestro modelo
-1. Factor de descuento β= $(@bind β Scrubbable(0.7:0.1:1.0, default = .9))
-2. Parámetros de la oferta de trabajo a= $(@bind a Scrubbable(0.0:0.25:5, default = 1)) b= $(@bind b Scrubbable(0.0:0.25:5, default = 2)), c= $(@bind c Scrubbable(0.0:0.25:5, default = 2))
-3. Productividades A₁ = $(@bind A₁ Scrubbable(0.0:0.25:5, default = 1)) y A₂ = $(@bind A₂ Scrubbable(0.0:0.25:5, default = 1))
+1. Factor de descuento β= $(@bind β Scrubbable(0.2:0.1:1.0, default = .9))
+2. Parámetros de la oferta de trabajo γ= $(@bind γ Scrubbable(0.0:0.1:0.5, default = 0.1)),  σ= $(@bind σ Scrubbable(1.0:0.1:2.0, default = 1.7))
+3. Productividades A₁ = $(@bind A₁ Scrubbable(0.5:0.1:1.5, default = 1)) y A₂ = $(@bind A₂ Scrubbable(0.5:0.1:1.5, default = 1))
 4. Depreciación δ = $(@bind δ Scrubbable(0.0:0.1:1.0, default = .2))
-5. Capital Inicial K₁ = $(@bind K₁ Scrubbable(0.0:0.25:5, default = 1))
+5. Capital Inicial K₁ = $(@bind K₁ Scrubbable(0.:0.1:1.5, default = 1))
 6. Proporción de capital α = $(@bind α Scrubbable(0.0:0.1:1.0, default = .5))
 """
 
 # ╔═╡ b14a1ee9-cbdd-4fec-9303-e043e13cc63a
 begin
-#Find the equilibrium value for all variables
-#Labour Supply --  exogenous, static
-Lˢ(w) = (b-(w-c)^2)/a
+    # Equilibrium Values:
+    # In t=1 everything is given:
+    L₁_opt = ((1 - α) * A₁ / γ)^(1 / (σ + α)) * K₁^(α / (σ + α))
+    Y₁_opt = A₁ * K₁^α * L₁_opt^(1 - α)
 
-# Credit Markets
-S(r,Y₁,Y₂) = β/(1+β)*Y₁ + (β/(1+β)*(1+r)) * Y₂
-I(r, K₂) = K₂ - K₁ * (1 - δ)
+    # We only need to solve the problem for t=2:
+    L₂(r) = ((1 - α) * A₂ / γ)^(1 / (σ + α)) * K₂(r)^(α / (σ + α)) # Given by w=w in the Labour Mkt
+    K₂(r) = (((α / (r + δ)) * A₂)^(1 / (1 - α)) * ((1 - α) * A₂ / γ)^(1 / (α + σ)))^(σ / (α + σ))
+    Y₂(r) = A₂ * K₂(r)^α * L₂(r)^(1 - α)
 
-# Producción
-L₁(w₁) = ((1 - α) * A₁/ w₁)^(1 / α) * K₁
-L₂(w₂, K₂) = ((1 - α) * A₂ / w₂)^(1 / α) * K₂
-Y₁(L₁) = A₁ * K₁^α * L₁^(1 - α)
-Y₂(K₂, L₂) = A₂ * K₂^α * L₂^(1 - α)
+    # The equilibrium thus depends solely on r
+    S(r) = β / (1 + β) * Y₁_opt - β / ((1 + β) * (1 + r)) * Y₂(r)
+    I(r) = K₂(r) - K₁ * (1 - δ)
 
-function G!(G, x)
-    # Variables are x[1] = w₁, x[2] = w₂, x[3] = r, x[4] = K₂
-    G[1] = I(x[3], x[4]) - S(x[3], Y₁(L₁(x[1])), Y₂(L₂(x[2], x[4]), x[4])) # S = Y
-    G[2] = L₁(x[1]) - Lˢ(x[1]) # Labour Mkt1
-    G[3] = L₂(x[2], x[4]) - Lˢ(x[2]) # Labour Mkt2
-    G[4] = α * A₂ * x[4]^(α - 1) * L₂(x[2], x[4])^(1 - α) - x[3] - δ # PmgK2 = r + δ
+    # We find the solution for the interest rate and other eq values:
+    f_tosolve(r) = S(r) - I(r)
+    r_opt = find_zero(f_tosolve, 0.5)
+	K₂_opt = K₂(r_opt)
+    L₂_opt = ((1 - α) * A₂ / γ)^(1 / (σ + α)) * K₂_opt^(α / (σ + α))
+    Y₂_opt = A₂ * K₂_opt^α * L₂_opt^(1 - α)
+    S_opt = β / (1 + β) * Y₁_opt - β / ((1 + β) * (1 + r_opt)) * Y₂_opt
+    I_opt = K₂_opt - K₁ * (1 - δ)
+    w₁_opt = γ * L₁_opt^σ
+    w₂_opt = γ * L₂_opt^σ
+
+    ## Functions for plotting:
+    pYt(A, K, L, α) = A * K^α * L^(1 - α)
+    pwˢt(L, γ, σ) = γ * L^σ
+    pwᵈt(A, K, L, α) = (1 - α) * A * (K/L)^α
+    pr(A, K, L, α) = α * A * (L/K)^(1 - α)
+    pS(r) = β / (1 + β) * Y₁_opt - β / ((1 + β) * (1 + r)) * Y₂_opt
+	pI(r) = K₂(r) - K₁ * (1 - δ)
+
+    ## Initial Equilibrium
+    β_in = 0.9
+    γ_in = 0.1
+    σ_in = 1.7
+    A₁_in = 1.0
+    A₂_in = 1.0
+    δ_in = 0.2
+    K₁_in = 1
+    α_in = 0.5
+    r_in = 0.5098539326954036
+    L₁_in = ((1 - α_in) * A₁_in / γ_in)^(1 / (σ_in + α_in)) * K₁_in^(α_in / (σ_in + α_in))
+    Y₁_in = A₁_in * K₁_in^α_in * L₁_in^(1 - α_in)
+	K₂_in = (((α_in / (r_in + δ_in)) * A₂_in)^(1 / (1 - α_in)) * ((1 - α_in) * A₂_in / γ_in)^(1 / (α_in + σ_in)))^(σ_in / (α_in + σ_in))
+    L₂_in = ((1 - α_in) * A₂_in / γ_in)^(1 / (σ_in + α_in)) * K₂_in^(α_in / (σ_in + α_in))
+	Y₂_in = A₂_in * K₂_in^α * L₂_in^(1 - α)
+    S_in = β_in / (1 + β_in) * Y₁_in - β_in / ((1 + β_in) * (1 + r_in)) * Y₂_in
+    I_in = K₂_in - K₁_in * (1 - δ_in)
+    w₁_in = γ_in * L₁_in^σ_in
+    w₂_in = γ_in * L₂_in^σ_in
+
+    # Initial Credit Market
+    pS_in(r) = β_in / (1 + β_in) * Y₁_in - β_in / ((1 + β_in) * (1 + r)) * Y₂_in
+	pK₂_in(r) = (((α_in / (r + δ_in)) * A₂_in)^(1 / (1 - α_in)) * ((1 - α_in) * A₂_in / γ_in)^(1 / (α_in + σ_in)))^(σ_in / (α_in + σ_in))
+	pI_in(r) = pK₂_in(r) - K₁_in * (1 - δ_in)
+
+	md"$\begin{matrix}  & \text{Familias}  & \text{Firmas}\\  \text{Producción}& & Y_t= A_{t}K_{t}^{\alpha}L_{t}^{1-\alpha} \\\\\text{Trabajo}& w_{t}=\gamma(L^s_t)^{\sigma}& w_{t}=(1-\alpha)A_{t}K_{t}^{\alpha}(L_{t}^{d})^{-\alpha}  \\\\\text{Capital}&& {r+\delta=\alpha A_{2}(K_{2}^d)^{\alpha-1}(L_{2}^{d})^{1-\alpha}}  \\\\\text{Ahorro-Inversión}&{S=\frac{\beta}{1+\beta}Y_{1}-\frac{\beta}{(1+\beta)(1+r)}Y_{2}}  & I =K_{2}^d - (1-\delta)K_{1}  \\\end{matrix}$"
 end
 
-results = nlsolve(G!, [1.0, 1.0, 1.0, 1.0]).zero
-w₁_eq, w₂_eq, r_eq, K₂_eq = round.(results, digits=3)
-
-L₁_eq = round(L₁(w₁_eq),  digits=3)
-L₂_eq = round(L₂(w₂_eq, K₂_eq), digits=3)
-Y₁_eq = round(Y₁(L₁_eq), digits=3)
-Y₂_eq = round(Y₂(K₂_eq, L₂_eq), digits=3)
-I_eq  = round(I(r_eq, K₂_eq), digits=3)
-S_eq  = round(S(r_eq, Y₁_eq, Y₂_eq), digits=3)
-
-w₁_in = 0.752; w₂_in = 0.82; L₁_in = 0.442; L₂_in= 0.609
-K₂_in = 1.637; r_in= 0.105; Y₁_in = 0.665; Y₂_in = 0.998
-S_in = 0.837
-
-	
-# Just for Plotting:
-I_plot(r) = (α*A₂/(r+δ))^(1/(1-α))*L₂_eq - K₁ * (1 - δ)
-K₂(r) = (α*A₂/(r))^(1/(1-α))*L₂_eq
-
-
-md"""Los Valores de equilibrio del modelo son:
-1. Salarios: w₁ = $(w₁_eq), w₂ = $(w₂_eq) 
-2. Trabajo:  L₁ = $(L₁_eq), L₂= $(L₂_eq) 
-3. Capital: K₂ = $(K₂_eq) ; Tasa: r= $(r_eq)
-4. Producto: Y₁ = $(Y₁_eq), Y₂ = $(Y₂_eq)
-5. Crédito: I = $(I_eq), S = $(S_eq)
-"""
-
-end
 
 # ╔═╡ 88a53a9b-b152-4793-aeb1-cffe051a349a
 begin
-	t = -10:0.1:10 # For the contours
-	l = @layout [ [grid(2,1) ] [j;_] [grid(2,2) ] ]
-	# Production on Day 1
-	p1 = plot(Y₁, xlims=(0, b/a+0.5), ylims=(0,1.7), color = "blue")
-	p1 = plot!([L₁_eq], seriestype = "vline", color = "black")
-	p1 = scatter!([L₁_eq], [Y₁_eq], color = "red", label = "", markersize = 4)
-	p1 = scatter!([L₁_in], [Y₁_in], color = "black", label = "", markersize = 4, markerstrokealpha  = 0.4)
-	#Labor Mkt1
-	p2 = plot(Lˢ.(t), t, xlims=(0, b/a+0.5), ylims=(0,4), color = "blue")
-	p2 = plot!([L₁_eq], seriestype = "vline", color = "black")
-	p2 = plot!(L₁.(t), t, color = "blue")
-	p2 = scatter!([L₁_eq], [w₁_eq], color = "red", label = "", markersize = 4)
-	p2 = scatter!([L₁_in], [w₁_in], color = "black", label = "", markersize = 4, markerstrokealpha  = 0.4)
-	# Credit Market
-	p3 = plot(broadcast(r->S(r,Y₁_eq, Y₂_eq), t), t, 
-		color = "blue", ylims=(0,.4), xlims=(0.5,1.5))
-	p3 = plot!(I_plot.(t), t, color = "blue")
-	p3 = scatter!([I_eq], [r_eq], color = "red", label = "", markersize = 4)
-	p3 = scatter!([S_in], [r_in], color = "black", label = "", markersize = 4, markerstrokealpha  = 0.4)
-	# Production 2 - Labour
-	p4 = plot(L₂->Y₂(K₂_eq, L₂), color = "blue", xlims=(0, b/a+0.5), ylims=(0,3))
-	p4 = plot!([L₂_eq], seriestype = "vline", color = "black")
-	p4 = plot!([Y₂_eq], seriestype = "hline", color = "black")
-	p4 = scatter!([L₂_eq], [Y₂_eq], color = "red", label = "", markersize = 4)
-	p4 = scatter!([L₂_in], [Y₂_in], color = "black", label = "", markersize = 4,markerstrokealpha  = 0.4)
-	# Production 2 - Capital
-	p5 = plot(K₂->Y₂(K₂, L₂_eq), color = "blue", ylims=(0,3))
-	p5 = plot!([K₂_eq], seriestype = "vline", color = "black")
-	p5 = plot!([Y₂_eq], seriestype = "hline", color = "black")
-	p5 = scatter!([K₂_eq], [Y₂_eq], color = "red", label = "", markersize = 4)
-	p5 = scatter!([K₂_in], [Y₂_in], color = "black", label = "", markersize = 4, markerstrokealpha  = 0.4)
-	# Labor Mkt2
-	p6 = plot(Lˢ.(t), t, xlims=(0, b/a+0.5), ylims=(0,4), color = "blue")
-	p6 = plot!(broadcast(w₂->L₂(w₂, K₂_eq), t), t, color = "blue")
-	p6 = plot!([L₂_eq], seriestype = "vline", color = "black")
-	p6 = scatter!([L₂_eq], [w₂_eq], color = "red", label = "", markersize = 4)
-	p6 = scatter!([L₂_in], [w₂_in], color = "black", label = "", markersize = 4, markerstrokealpha  = 0.4)
-	# Capital Mkt
-	p7 = plot(K₂.(t), t, xlims=(0, 5), ylims=(0,1), color = "blue")
-	p7 = plot!([K₂_eq], seriestype = "vline", color = "black")
-	p7 = plot!([r_eq+δ], seriestype = "hline", color = "black")
-	p7 = scatter!([K₂_eq], [r_eq+δ], color = "red", label = "", markersize = 4)
-	p7 = scatter!([K₂_in], [r_in+δ], color = "black", label = "", markersize = 4, markerstrokealpha  = 0.4)
+    t = 0:0.1:10 # For the contours
+    l = @layout [a{0.25w} b{0.25w} c{0.2w} d{0.22w}; e{0.25w} _ f{0.22w} g{0.22w}]
+    # Production on Day 1
+    p1 = plot(L -> pYt(A₁, K₁, L, α), xlims=(0, 4), ylims=(0, 2.5), color="blue")
+    p1 = plot!([L₁_opt], seriestype="vline", color="black")
+    p1 = scatter!([L₁_opt], [Y₁_opt], color="red", label="", markersize=4)
 
-	
-	plot(p1, p2, p3, p4, p5, p6, p7, layout = l, legend = false)
+    p1 = plot!(L -> pYt(A₁_in, K₁_in, L, α_in), color="gray", linealpha=1)
+    p1 = plot!([L₁_in], seriestype="vline", color="gray")
+    p1 = scatter!([L₁_in], [Y₁_in], color="gray", label="", markersize=4, markerstrokealpha=0.4)
+    #Labor Mkt1
+    p5 = plot(L -> pwˢt(L, γ, σ), xlims=(0, 4), ylims=(0, 1), color="blue")
+    p5 = plot!([L₁_opt], seriestype="vline", color="black")
+    p5 = plot!(L -> pwᵈt(A₁, K₁, L, α), color="blue")
+    p5 = scatter!([L₁_opt], [w₁_opt], color="red", label="", markersize=4)
+
+    p5 = plot!(L -> pwˢt(L, γ_in, σ_in), color="gray")
+    p5 = plot!([L₁_in], seriestype="vline", color="gray")
+    p5 = plot!(L -> pwᵈt(A₁_in, K₁_in, L, α_in), color="gray")
+    p5 = scatter!([L₁_in], [w₁_in], color="gray", label="", markersize=4, markerstrokealpha=0.4)
+    # Credit Market
+    p2 = plot(pS.(t), t, color="blue", xlims=(-1, 1), ylims=(0, 1.2))
+    p2 = plot!(pI.(t), t, color="blue")
+    p2 = scatter!([S_opt], [r_opt], color="red", label="", markersize=4)
+
+    p2 = plot!(pS_in.(t), t, color = "gray")
+    p2 = plot!(pI_in.(t), t, color = "gray")
+    p2 = scatter!([I_in], [r_in], color = "gray", label = "", markersize = 4, markerstrokealpha  = 0.4)
+    # Production 2 - Labour
+    p3 = plot(L -> pYt(A₂, K₂_opt, L, α), xlims=(0, 4), ylims=(0, 2.5), color="blue")
+    p3 = plot!([L₂_opt], seriestype="vline", color="black")
+    p3 = scatter!([L₂_opt], [Y₂_opt], color="red", label="", markersize=4)
+
+    p3 = plot!(L -> pYt(A₂_in, K₂_in, L, α_in), color="gray", linealpha=1)
+    p3 = plot!([L₂_in], seriestype="vline", color="gray")
+    p3 = scatter!([L₂_in], [Y₂_in], color="gray", label="", markersize=4, markerstrokealpha=0.4)
+    # Production 2 - Capital
+    p4 = plot(K -> pYt(A₂, K, L₂_opt, α), xlims=(0, 4), ylims=(0, 2.5), color="blue")
+    p4 = plot!([K₂_opt], seriestype="vline", color="black")
+    p4 = scatter!([K₂_opt], [Y₂_opt], color="red", label="", markersize=4)
+
+    p4 = plot!(K -> pYt(A₂_in, K, L₂_in, α_in), color="gray", linealpha=1)
+    p4 = plot!([K₂_in], seriestype="vline", color="gray")
+    p4 = scatter!([K₂_in], [Y₂_in], color="gray", label="", markersize=4, markerstrokealpha=0.4)
+    # Labor Mkt2
+    p6 = plot(L -> pwˢt(L, γ, σ), xlims=(0, 4), ylims=(0, 1), color="blue")
+    p6 = plot!([L₂_opt], seriestype="vline", color="black")
+    p6 = plot!(L -> pwᵈt(A₂, K₂_opt, L, α), color="blue")
+    p6 = scatter!([L₂_opt], [w₂_opt], color="red", label="", markersize=4)
+
+    p6 = plot!(L -> pwˢt(L, γ_in, σ_in), color="gray")
+    p6 = plot!([L₂_in], seriestype="vline", color="gray")
+    p6 = plot!(L -> pwᵈt(A₂_in, K₂_in, L, α_in), color="gray")
+    p6 = scatter!([L₂_in], [w₂_in], color="gray", label="", markersize=4, markerstrokealpha=0.4)
+    # Capital Mkt
+    p7 = plot(K -> pr(A₂, K, L₂_opt, α), xlims=(0, 4), ylims=(0.01, 1.5), color="blue")
+    p7 = plot!([K₂_opt], seriestype="vline", color="black")
+    p7 = plot!([r_opt + δ], seriestype="hline", color="black")
+    p7 = scatter!([K₂_opt], [r_opt + δ], color="red", label="", markersize=4)
+
+    p7 = plot!(K -> pr(A₂_in, K, L₂_in, α_in), color="gray")
+    p7 = plot!([K₂_in], seriestype="vline", color="gray")
+    p7 = plot!([r_in + δ_in], seriestype="hline", color="gray")
+    p7 = scatter!([K₂_in], [r_in + δ_in], color="gray", label="", markersize=4, markerstrokealpha=0.4)
+
+    plot(p1, p2, p3, p4, p5, p6, p7, layout=l, legend=false, size=(1050, 500))
 end
+
+# ╔═╡ b11b6f9c-3adb-4628-9603-ce54ebbe3731
+md"""
+|          | Calibración Inicial          | Nuevo Equilibrio             |
+|:-------- |:---------------------------- |:---------------------------- |
+| Salarios | w₁ = $(w₁_in), w₂ = $(w₂_in) | w₁ = $(w₁_opt), w₂ = $(w₂_opt) |
+| Trabajo  | L₁ = $(L₁_in), L₂= $(L₂_in)  | L₁ = $(L₁_opt), L₂= $(L₂_opt)  |
+| Capital  | K₂ = $(K₂_in), r= $(r_in)    | K₂ = $(K₂_opt), r= $(r_opt)    |
+| Producto | Y₁ = $(Y₁_in), Y₂ = $(Y₂_in) | Y₁ = $(Y₁_opt), Y₂ = $(Y₂_opt) |
+| Crédito  | I = $(S_in), S = $(S_in)     | I = $(I_opt), S = $(S_opt)     |
+"""
+
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
-NLsolve = "2774e3e8-f4cf-5e23-947b-6d7e65073b56"
+LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+Roots = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
 
 [compat]
-NLsolve = "~4.5.1"
+LaTeXStrings = "~1.3.0"
 Plots = "~1.38.17"
 PlutoUI = "~0.7.52"
+Roots = "~2.0.19"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -170,7 +228,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.8.5"
 manifest_format = "2.0"
-project_hash = "a94712d5d5abaa8d1eeda0dfae20152f61e2a8e3"
+project_hash = "9a6d51f093027b6253e22fb619389e9d32c099e1"
 
 [[deps.AbstractPlutoDingetjes]]
 deps = ["Pkg"]
@@ -178,21 +236,9 @@ git-tree-sha1 = "91bd53c39b9cbfb5ef4b015e8b582d344532bd0a"
 uuid = "6e696c72-6542-2067-7265-42206c756150"
 version = "1.2.0"
 
-[[deps.Adapt]]
-deps = ["LinearAlgebra", "Requires"]
-git-tree-sha1 = "76289dc51920fdc6e0013c872ba9551d54961c24"
-uuid = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
-version = "3.6.2"
-
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
 version = "1.1.1"
-
-[[deps.ArrayInterface]]
-deps = ["Adapt", "LinearAlgebra", "Requires", "SparseArrays", "SuiteSparse"]
-git-tree-sha1 = "f83ec24f76d4c8f525099b2ac475fc098138ec31"
-uuid = "4fba245c-0d91-5ea0-9b3e-6abc04ee57a9"
-version = "7.4.11"
 
 [[deps.Artifacts]]
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
@@ -259,11 +305,10 @@ git-tree-sha1 = "fc08e5930ee9a4e03f84bfb5211cb54e7769758a"
 uuid = "5ae59095-9a9b-59fe-a467-6f913c188581"
 version = "0.12.10"
 
-[[deps.CommonSubexpressions]]
-deps = ["MacroTools", "Test"]
-git-tree-sha1 = "7b8a93dba8af7e3b42fecabf646260105ac373f7"
-uuid = "bbf7d656-a473-5ed7-a52c-81e309532950"
-version = "0.3.0"
+[[deps.CommonSolve]]
+git-tree-sha1 = "0eee5eb66b1cf62cd6ad1b460238e60e4b09400c"
+uuid = "38540f10-b2f7-11e9-35d8-d573e4eb0ff2"
+version = "0.2.4"
 
 [[deps.Compat]]
 deps = ["Dates", "LinearAlgebra", "UUIDs"]
@@ -312,28 +357,6 @@ uuid = "ade2ca70-3891-5945-98fb-dc099432e06a"
 deps = ["Mmap"]
 uuid = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 
-[[deps.DiffResults]]
-deps = ["StaticArraysCore"]
-git-tree-sha1 = "782dd5f4561f5d267313f23853baaaa4c52ea621"
-uuid = "163ba53b-c6d8-5494-b064-1a9d43ac40c5"
-version = "1.1.0"
-
-[[deps.DiffRules]]
-deps = ["IrrationalConstants", "LogExpFunctions", "NaNMath", "Random", "SpecialFunctions"]
-git-tree-sha1 = "23163d55f885173722d1e4cf0f6110cdbaf7e272"
-uuid = "b552c78f-8df3-52c6-915a-8e097449b14b"
-version = "1.15.1"
-
-[[deps.Distances]]
-deps = ["LinearAlgebra", "SparseArrays", "Statistics", "StatsAPI"]
-git-tree-sha1 = "b6def76ffad15143924a2199f72a5cd883a2e8a9"
-uuid = "b4f34e82-e78d-54a5-968a-f98e89d6e8f7"
-version = "0.10.9"
-
-[[deps.Distributed]]
-deps = ["Random", "Serialization", "Sockets"]
-uuid = "8ba89e20-285c-5b6f-9357-94700520ee1b"
-
 [[deps.DocStringExtensions]]
 deps = ["LibGit2"]
 git-tree-sha1 = "2fb1e02f2b635d0845df5d7c167fec4dd739b00d"
@@ -372,12 +395,6 @@ version = "4.4.2+2"
 [[deps.FileWatching]]
 uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
 
-[[deps.FiniteDiff]]
-deps = ["ArrayInterface", "LinearAlgebra", "Requires", "Setfield", "SparseArrays", "StaticArrays"]
-git-tree-sha1 = "c6e4a1fbe73b31a3dea94b1da449503b8830c306"
-uuid = "6a86dc24-6348-571c-b903-95158fe2bd41"
-version = "2.21.1"
-
 [[deps.FixedPointNumbers]]
 deps = ["Statistics"]
 git-tree-sha1 = "335bfdceacc84c5cdf16aadc768aa5ddfc5383cc"
@@ -395,12 +412,6 @@ deps = ["Printf"]
 git-tree-sha1 = "8339d61043228fdd3eb658d86c926cb282ae72a8"
 uuid = "59287772-0a20-5a39-b81b-1366585eb4c0"
 version = "0.4.2"
-
-[[deps.ForwardDiff]]
-deps = ["CommonSubexpressions", "DiffResults", "DiffRules", "LinearAlgebra", "LogExpFunctions", "NaNMath", "Preferences", "Printf", "Random", "SpecialFunctions", "StaticArrays"]
-git-tree-sha1 = "00e252f4d706b3d55a8863432e742bf5717b498d"
-uuid = "f6369f11-7733-5829-9624-2563aa707210"
-version = "0.10.35"
 
 [[deps.FreeType2_jll]]
 deps = ["Artifacts", "Bzip2_jll", "JLLWrappers", "Libdl", "Zlib_jll"]
@@ -431,10 +442,10 @@ uuid = "28b8d3ca-fb5f-59d9-8090-bfdbd6d07a71"
 version = "0.72.9"
 
 [[deps.GR_jll]]
-deps = ["Artifacts", "Bzip2_jll", "Cairo_jll", "FFMPEG_jll", "Fontconfig_jll", "GLFW_jll", "JLLWrappers", "JpegTurbo_jll", "Libdl", "Libtiff_jll", "Pixman_jll", "Qt6Base_jll", "Zlib_jll", "libpng_jll"]
-git-tree-sha1 = "f61f768bf090d97c532d24b64e07b237e9bb7b6b"
+deps = ["Artifacts", "Bzip2_jll", "Cairo_jll", "FFMPEG_jll", "Fontconfig_jll", "FreeType2_jll", "GLFW_jll", "JLLWrappers", "JpegTurbo_jll", "Libdl", "Libtiff_jll", "Pixman_jll", "Qt6Base_jll", "Zlib_jll", "libpng_jll"]
+git-tree-sha1 = "1596bab77f4f073a14c62424283e7ebff3072eca"
 uuid = "d2c73de3-f751-5644-a686-071e5b155ba9"
-version = "0.72.9+0"
+version = "0.72.9+1"
 
 [[deps.Gettext_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl", "Libiconv_jll", "Pkg", "XML2_jll"]
@@ -633,12 +644,6 @@ git-tree-sha1 = "7f3efec06033682db852f8b3bc3c1d2b0a0ab066"
 uuid = "38a345b3-de98-5d2b-a5d3-14cd9215e700"
 version = "2.36.0+0"
 
-[[deps.LineSearches]]
-deps = ["LinearAlgebra", "NLSolversBase", "NaNMath", "Parameters", "Printf"]
-git-tree-sha1 = "7bbea35cec17305fc70a0e5b4641477dc0789d9d"
-uuid = "d3d80556-e9d4-5f37-9878-2ab0fcc64255"
-version = "7.2.0"
-
 [[deps.LinearAlgebra]]
 deps = ["Libdl", "libblastrampoline_jll"]
 uuid = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -702,18 +707,6 @@ uuid = "a63ad114-7e13-5084-954f-fe012c677804"
 uuid = "14a3606d-f60d-562e-9121-12d972cd8159"
 version = "2022.2.1"
 
-[[deps.NLSolversBase]]
-deps = ["DiffResults", "Distributed", "FiniteDiff", "ForwardDiff"]
-git-tree-sha1 = "a0b464d183da839699f4c79e7606d9d186ec172c"
-uuid = "d41bc354-129a-5804-8e4c-c37616107c6c"
-version = "7.8.3"
-
-[[deps.NLsolve]]
-deps = ["Distances", "LineSearches", "LinearAlgebra", "NLSolversBase", "Printf", "Reexport"]
-git-tree-sha1 = "019f12e9a1a7880459d0173c182e6a99365d7ac1"
-uuid = "2774e3e8-f4cf-5e23-947b-6d7e65073b56"
-version = "4.5.1"
-
 [[deps.NaNMath]]
 deps = ["OpenLibm_jll"]
 git-tree-sha1 = "0877504529a3e5c3343c6f8b4c0381e57e4387e4"
@@ -752,12 +745,6 @@ git-tree-sha1 = "1aa4b74f80b01c6bc2b89992b861b5f210e665b5"
 uuid = "458c3c95-2e84-50aa-8efc-19380b2a3a95"
 version = "1.1.21+0"
 
-[[deps.OpenSpecFun_jll]]
-deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl", "Pkg"]
-git-tree-sha1 = "13652491f6856acfd2db29360e1bbcd4565d04f1"
-uuid = "efe28fd5-8261-553b-a9e1-b2916fc3738e"
-version = "0.5.5+0"
-
 [[deps.Opus_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "51a08fb14ec28da2ec7a927c4337e4332c2a4720"
@@ -773,12 +760,6 @@ version = "1.6.2"
 deps = ["Artifacts", "Libdl"]
 uuid = "efcefdf7-47ab-520b-bdef-62a2eaa19f15"
 version = "10.40.0+0"
-
-[[deps.Parameters]]
-deps = ["OrderedCollections", "UnPack"]
-git-tree-sha1 = "34c0e9ad262e5f7fc75b10a9952ca7692cfc5fbe"
-uuid = "d96e819e-fc66-5662-9728-84c9c7592b0a"
-version = "0.12.3"
 
 [[deps.Parsers]]
 deps = ["Dates", "PrecompileTools", "UUIDs"]
@@ -885,6 +866,12 @@ git-tree-sha1 = "838a3a4188e2ded87a4f9f184b4b0d78a1e91cb7"
 uuid = "ae029012-a4dd-5104-9daa-d747884805df"
 version = "1.3.0"
 
+[[deps.Roots]]
+deps = ["ChainRulesCore", "CommonSolve", "Printf", "Setfield"]
+git-tree-sha1 = "ff42754a57bb0d6dcfe302fd0d4272853190421f"
+uuid = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
+version = "2.0.19"
+
 [[deps.SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 version = "0.7.0"
@@ -928,18 +915,6 @@ version = "1.1.1"
 deps = ["LinearAlgebra", "Random"]
 uuid = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 
-[[deps.SpecialFunctions]]
-deps = ["ChainRulesCore", "IrrationalConstants", "LogExpFunctions", "OpenLibm_jll", "OpenSpecFun_jll"]
-git-tree-sha1 = "7beb031cf8145577fbccacd94b8a8f4ce78428d3"
-uuid = "276daf66-3868-5448-9aa4-cd146d93841b"
-version = "2.3.0"
-
-[[deps.StaticArrays]]
-deps = ["LinearAlgebra", "Random", "StaticArraysCore", "Statistics"]
-git-tree-sha1 = "9cabadf6e7cd2349b6cf49f1915ad2028d65e881"
-uuid = "90137ffa-7385-5640-81b9-e52037218182"
-version = "1.6.2"
-
 [[deps.StaticArraysCore]]
 git-tree-sha1 = "36b3d696ce6366023a0ea192b4cd442268995a0d"
 uuid = "1e83bf80-4336-4d27-bf5d-d5a4f845583c"
@@ -960,10 +935,6 @@ deps = ["DataAPI", "DataStructures", "LinearAlgebra", "LogExpFunctions", "Missin
 git-tree-sha1 = "75ebe04c5bed70b91614d684259b661c9e6274a4"
 uuid = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 version = "0.34.0"
-
-[[deps.SuiteSparse]]
-deps = ["Libdl", "LinearAlgebra", "Serialization", "SparseArrays"]
-uuid = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
 
 [[deps.TOML]]
 deps = ["Dates"]
@@ -1004,11 +975,6 @@ version = "1.4.2"
 [[deps.UUIDs]]
 deps = ["Random", "SHA"]
 uuid = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
-
-[[deps.UnPack]]
-git-tree-sha1 = "387c1f73762231e86e0c9c5443ce3b4a0a9a0c2b"
-uuid = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
-version = "1.0.2"
 
 [[deps.Unicode]]
 uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
@@ -1274,10 +1240,12 @@ version = "1.4.1+0"
 """
 
 # ╔═╡ Cell order:
+# ╟─e9a2cac2-8d92-41b9-a94a-10aa02dc67de
 # ╟─a7b277f7-2e49-4b61-95a7-5e25de24380f
 # ╟─928f5541-4bfd-451a-a150-b7c81c6fc0d3
 # ╟─50a2af8b-ded7-4b3b-a62e-71bca381fd5d
 # ╟─b14a1ee9-cbdd-4fec-9303-e043e13cc63a
 # ╟─88a53a9b-b152-4793-aeb1-cffe051a349a
+# ╟─b11b6f9c-3adb-4628-9603-ce54ebbe3731
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
