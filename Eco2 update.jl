@@ -21,7 +21,7 @@ end
 
 # ╔═╡ a7b277f7-2e49-4b61-95a7-5e25de24380f
 begin
-    using PlutoUI, Roots, Plots
+    using PlutoUI, Roots, Plots, LaTeXStrings
     plotly()
     html"<p style='font-style: italic; text-align:right'> Nicolás Harari, Agosto 2023</p>"
 end
@@ -53,14 +53,12 @@ Tenemos:
 # ╔═╡ 50a2af8b-ded7-4b3b-a62e-71bca381fd5d
 md"""## Parámetros
 Definimos los parámetros de nuestro modelo
-1. Factor de descuento β= $(@bind β Scrubbable(0.5:0.1:1.0, default = .9))
-2. Parámetros de la oferta de trabajo γ= $(@bind γ Scrubbable(0.0:0.1:0.2, default = 0.1)),  σ= $(@bind σ Scrubbable(1.0:0.1:2.0, default = 1.7))
+1. Factor de descuento β= $(@bind β Scrubbable(0.2:0.1:1.0, default = .9))
+2. Parámetros de la oferta de trabajo γ= $(@bind γ Scrubbable(0.0:0.1:0.5, default = 0.1)),  σ= $(@bind σ Scrubbable(1.0:0.1:2.0, default = 1.7))
 3. Productividades A₁ = $(@bind A₁ Scrubbable(0.5:0.1:1.5, default = 1)) y A₂ = $(@bind A₂ Scrubbable(0.5:0.1:1.5, default = 1))
 4. Depreciación δ = $(@bind δ Scrubbable(0.0:0.1:1.0, default = .2))
 5. Capital Inicial K₁ = $(@bind K₁ Scrubbable(0.:0.1:1.5, default = 1))
 6. Proporción de capital α = $(@bind α Scrubbable(0.0:0.1:1.0, default = .5))
-
-$\begin{matrix}  & \text{Familias}  & \text{Firmas}\\  \text{Producción}& & Y_t= A_{t}K_{t}^{\alpha}L_{t}^{1-\alpha} \\\\\text{Trabajo}& w_{t}=\gamma(L^s_t)^{\sigma}& w_{t}=(1-\alpha)A_{t}K_{t}^{\alpha}(L_{t}^{d})^{-\alpha}  \\\\\text{Capital}&& {r+\delta=\alpha A_{2}(K_{2}^d)^{\alpha-1}(L_{2}^{d})^{1-\alpha}}  \\\\\text{Ahorro-Inversión}&{S=\frac{\beta}{1+\beta}Y_{1}-\frac{\beta}{(1+\beta)(1+r)}Y_{2}}  & I =K_{2}^d - (1-\delta)K_{1}  \\\end{matrix}$
 """
 
 # ╔═╡ b14a1ee9-cbdd-4fec-9303-e043e13cc63a
@@ -76,52 +74,54 @@ begin
     Y₂(r) = A₂ * K₂(r)^α * L₂(r)^(1 - α)
 
     # The equilibrium thus depends solely on r
-    S(r) = β / (1 + β) * Y₁_opt - (β / (1 + β) * (1 + r)) * Y₂(r)
+    S(r) = β / (1 + β) * Y₁_opt - β / ((1 + β) * (1 + r)) * Y₂(r)
     I(r) = K₂(r) - K₁ * (1 - δ)
 
     # We find the solution for the interest rate and other eq values:
     f_tosolve(r) = S(r) - I(r)
     r_opt = find_zero(f_tosolve, 0.5)
-    L₂_opt = L₂(r_opt)
-    K₂_opt = K₂(r_opt)
-    Y₂_opt = Y₂(r_opt)
-    S_opt = S(r_opt)
-    I_opt = I(r_opt)
+	K₂_opt = K₂(r_opt)
+    L₂_opt = ((1 - α) * A₂ / γ)^(1 / (σ + α)) * K₂_opt^(α / (σ + α))
+    Y₂_opt = A₂ * K₂_opt^α * L₂_opt^(1 - α)
+    S_opt = β / (1 + β) * Y₁_opt - β / ((1 + β) * (1 + r_opt)) * Y₂_opt
+    I_opt = K₂_opt - K₁ * (1 - δ)
     w₁_opt = γ * L₁_opt^σ
     w₂_opt = γ * L₂_opt^σ
 
     ## Functions for plotting:
     pYt(A, K, L, α) = A * K^α * L^(1 - α)
     pwˢt(L, γ, σ) = γ * L^σ
-    pwᵈt(A, K, L, α) = (1 - α) * A * K^α * L^(-α)
-    pr(A, K, L, α) = α * A * K^(α - 1) * L^(1 - α)
-    pS(r) = β / (1 + β) * Y₁_opt - (β / (1 + β) * (1 + r)) * Y₂_opt
-    pI(r) = K₂(r) - K₁ * (1 - δ)
+    pwᵈt(A, K, L, α) = (1 - α) * A * (K/L)^α
+    pr(A, K, L, α) = α * A * (L/K)^(1 - α)
+    pS(r) = β / (1 + β) * Y₁_opt - β / ((1 + β) * (1 + r)) * Y₂_opt
+	pI(r) = K₂(r) - K₁ * (1 - δ)
 
-    ## Initial Equilibrium;
+    ## Initial Equilibrium
     β_in = 0.9
     γ_in = 0.1
     σ_in = 1.7
     A₁_in = 1.0
     A₂_in = 1.0
     δ_in = 0.2
-    K₁_in = 1.5
+    K₁_in = 1
     α_in = 0.5
-    r_in = 0.5079288438252372
+    r_in = 0.5098539326954036
     L₁_in = ((1 - α_in) * A₁_in / γ_in)^(1 / (σ_in + α_in)) * K₁_in^(α_in / (σ_in + α_in))
     Y₁_in = A₁_in * K₁_in^α_in * L₁_in^(1 - α_in)
-    L₂_in = L₂(r_in)
-    K₂_in = K₂(r_in)
-    Y₂_in = Y₂(r_in)
-    S_in = S(r_in)
-    I_in = I(r_in)
-    w₁_in = γ * L₁_in^σ
-    w₂_in = γ * L₂_in^σ
+	K₂_in = (((α_in / (r_in + δ_in)) * A₂_in)^(1 / (1 - α_in)) * ((1 - α_in) * A₂_in / γ_in)^(1 / (α_in + σ_in)))^(σ_in / (α_in + σ_in))
+    L₂_in = ((1 - α_in) * A₂_in / γ_in)^(1 / (σ_in + α_in)) * K₂_in^(α_in / (σ_in + α_in))
+	Y₂_in = A₂_in * K₂_in^α * L₂_in^(1 - α)
+    S_in = β_in / (1 + β_in) * Y₁_in - β_in / ((1 + β_in) * (1 + r_in)) * Y₂_in
+    I_in = K₂_in - K₁_in * (1 - δ_in)
+    w₁_in = γ_in * L₁_in^σ_in
+    w₂_in = γ_in * L₂_in^σ_in
 
     # Initial Credit Market
-    pS_in(r) = β_in / (1 + β_in) * Y₁_in - (β_in / (1 + β_in) * (1 + r)) * Y₂(r)
+    pS_in(r) = β_in / (1 + β_in) * Y₁_in - β_in / ((1 + β_in) * (1 + r)) * Y₂_in
+	pK₂_in(r) = (((α_in / (r + δ_in)) * A₂_in)^(1 / (1 - α_in)) * ((1 - α_in) * A₂_in / γ_in)^(1 / (α_in + σ_in)))^(σ_in / (α_in + σ_in))
+	pI_in(r) = pK₂_in(r) - K₁_in * (1 - δ_in)
 
-    md""
+	md"$\begin{matrix}  & \text{Familias}  & \text{Firmas}\\  \text{Producción}& & Y_t= A_{t}K_{t}^{\alpha}L_{t}^{1-\alpha} \\\\\text{Trabajo}& w_{t}=\gamma(L^s_t)^{\sigma}& w_{t}=(1-\alpha)A_{t}K_{t}^{\alpha}(L_{t}^{d})^{-\alpha}  \\\\\text{Capital}&& {r+\delta=\alpha A_{2}(K_{2}^d)^{\alpha-1}(L_{2}^{d})^{1-\alpha}}  \\\\\text{Ahorro-Inversión}&{S=\frac{\beta}{1+\beta}Y_{1}-\frac{\beta}{(1+\beta)(1+r)}Y_{2}}  & I =K_{2}^d - (1-\delta)K_{1}  \\\end{matrix}$"
 end
 
 
@@ -134,60 +134,60 @@ begin
     p1 = plot!([L₁_opt], seriestype="vline", color="black")
     p1 = scatter!([L₁_opt], [Y₁_opt], color="red", label="", markersize=4)
 
-    p1 = plot!(L -> pYt(A₁_in, K₁_in, L, α_in), xlims=(0, 4), ylims=(0, 2.5), color="gray", linealpha=1)
+    p1 = plot!(L -> pYt(A₁_in, K₁_in, L, α_in), color="gray", linealpha=1)
     p1 = plot!([L₁_in], seriestype="vline", color="gray")
     p1 = scatter!([L₁_in], [Y₁_in], color="gray", label="", markersize=4, markerstrokealpha=0.4)
     #Labor Mkt1
-    p5 = plot(L -> pwˢt(L, γ, σ), xlims=(0, 4), ylims=(0, 2), color="blue")
+    p5 = plot(L -> pwˢt(L, γ, σ), xlims=(0, 4), ylims=(0, 1), color="blue")
     p5 = plot!([L₁_opt], seriestype="vline", color="black")
     p5 = plot!(L -> pwᵈt(A₁, K₁, L, α), color="blue")
     p5 = scatter!([L₁_opt], [w₁_opt], color="red", label="", markersize=4)
 
-    p5 = plot!(L -> pwˢt(L, γ_in, σ_in), xlims=(0, 4), ylims=(0, 2), color="blue")
+    p5 = plot!(L -> pwˢt(L, γ_in, σ_in), color="gray")
     p5 = plot!([L₁_in], seriestype="vline", color="gray")
     p5 = plot!(L -> pwᵈt(A₁_in, K₁_in, L, α_in), color="gray")
     p5 = scatter!([L₁_in], [w₁_in], color="gray", label="", markersize=4, markerstrokealpha=0.4)
     # Credit Market
-    p2 = plot(pS.(t), t, color="blue", xlims=(-2.5, 2.5), ylims=(0, 1.5))
+    p2 = plot(pS.(t), t, color="blue", xlims=(-1, 1), ylims=(0, 1.2))
     p2 = plot!(pI.(t), t, color="blue")
     p2 = scatter!([S_opt], [r_opt], color="red", label="", markersize=4)
 
-    # p2 = plot!(fS_in.(t), t, color = "gray", ylims=(0,.4), xlims=(0.5,1.5))
-    # p2 = plot!(fI_plot_in.(t), t, color = "gray")
-    # p2 = scatter!([S_in], [r_in], color = "gray", label = "", markersize = 4, markerstrokealpha  = 0.4)
+    p2 = plot!(pS_in.(t), t, color = "gray")
+    p2 = plot!(pI_in.(t), t, color = "gray")
+    p2 = scatter!([I_in], [r_in], color = "gray", label = "", markersize = 4, markerstrokealpha  = 0.4)
     # Production 2 - Labour
-    p3 = plot(L -> pYt(A₂, K₂_opt, L, α), xlims=(0, 6), ylims=(0, 8), color="blue")
+    p3 = plot(L -> pYt(A₂, K₂_opt, L, α), xlims=(0, 4), ylims=(0, 2.5), color="blue")
     p3 = plot!([L₂_opt], seriestype="vline", color="black")
     p3 = scatter!([L₂_opt], [Y₂_opt], color="red", label="", markersize=4)
 
-    p3 = plot!(L -> pYt(A₂_in, K₂_in, L, α_in), xlims=(0, 6), ylims=(0, 8), color="gray", linealpha=1)
+    p3 = plot!(L -> pYt(A₂_in, K₂_in, L, α_in), color="gray", linealpha=1)
     p3 = plot!([L₂_in], seriestype="vline", color="gray")
     p3 = scatter!([L₂_in], [Y₂_in], color="gray", label="", markersize=4, markerstrokealpha=0.4)
     # Production 2 - Capital
-    p4 = plot(K -> pYt(A₂, K, L₂_opt, α), xlims=(0, 8), ylims=(0, 8), color="blue")
+    p4 = plot(K -> pYt(A₂, K, L₂_opt, α), xlims=(0, 4), ylims=(0, 2.5), color="blue")
     p4 = plot!([K₂_opt], seriestype="vline", color="black")
     p4 = scatter!([K₂_opt], [Y₂_opt], color="red", label="", markersize=4)
 
-    p4 = plot!(K -> pYt(A₂_in, K, L₂_in, α_in), xlims=(0, 8), ylims=(0, 8), color="gray", linealpha=1)
+    p4 = plot!(K -> pYt(A₂_in, K, L₂_in, α_in), color="gray", linealpha=1)
     p4 = plot!([K₂_in], seriestype="vline", color="gray")
     p4 = scatter!([K₂_in], [Y₂_in], color="gray", label="", markersize=4, markerstrokealpha=0.4)
     # Labor Mkt2
-    p6 = plot(L -> pwˢt(L, γ, σ), xlims=(0, 6), ylims=(0, 2), color="blue")
+    p6 = plot(L -> pwˢt(L, γ, σ), xlims=(0, 4), ylims=(0, 1), color="blue")
     p6 = plot!([L₂_opt], seriestype="vline", color="black")
     p6 = plot!(L -> pwᵈt(A₂, K₂_opt, L, α), color="blue")
     p6 = scatter!([L₂_opt], [w₂_opt], color="red", label="", markersize=4)
 
-    p6 = plot!(L -> pwˢt(L, γ_in, σ_in), xlims=(0, 6), ylims=(0, 2), color="gray")
+    p6 = plot!(L -> pwˢt(L, γ_in, σ_in), color="gray")
     p6 = plot!([L₂_in], seriestype="vline", color="gray")
     p6 = plot!(L -> pwᵈt(A₂_in, K₂_in, L, α_in), color="gray")
     p6 = scatter!([L₂_in], [w₂_in], color="gray", label="", markersize=4, markerstrokealpha=0.4)
     # Capital Mkt
-    p7 = plot(K -> pr(A₂, K, L₂_opt, α), xlims=(0, 8), ylims=(0.01, 1.5), color="blue")
+    p7 = plot(K -> pr(A₂, K, L₂_opt, α), xlims=(0, 4), ylims=(0.01, 1.5), color="blue")
     p7 = plot!([K₂_opt], seriestype="vline", color="black")
     p7 = plot!([r_opt + δ], seriestype="hline", color="black")
     p7 = scatter!([K₂_opt], [r_opt + δ], color="red", label="", markersize=4)
 
-    p7 = plot!(K -> pr(A₂_in, K, L₂_in, α_in), xlims=(0, 8), ylims=(0.01, 1.5), color="gray")
+    p7 = plot!(K -> pr(A₂_in, K, L₂_in, α_in), color="gray")
     p7 = plot!([K₂_in], seriestype="vline", color="gray")
     p7 = plot!([r_in + δ_in], seriestype="hline", color="gray")
     p7 = scatter!([K₂_in], [r_in + δ_in], color="gray", label="", markersize=4, markerstrokealpha=0.4)
@@ -210,11 +210,13 @@ md"""
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
+LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 Roots = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
 
 [compat]
+LaTeXStrings = "~1.3.0"
 Plots = "~1.38.17"
 PlutoUI = "~0.7.52"
 Roots = "~2.0.19"
@@ -226,7 +228,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.8.5"
 manifest_format = "2.0"
-project_hash = "6e5b47ec7065638492b4728045c58635680851aa"
+project_hash = "9a6d51f093027b6253e22fb619389e9d32c099e1"
 
 [[deps.AbstractPlutoDingetjes]]
 deps = ["Pkg"]
@@ -1239,7 +1241,7 @@ version = "1.4.1+0"
 
 # ╔═╡ Cell order:
 # ╟─e9a2cac2-8d92-41b9-a94a-10aa02dc67de
-# ╟─a7b277f7-2e49-4b61-95a7-5e25de24380f
+# ╠═a7b277f7-2e49-4b61-95a7-5e25de24380f
 # ╟─928f5541-4bfd-451a-a150-b7c81c6fc0d3
 # ╟─50a2af8b-ded7-4b3b-a62e-71bca381fd5d
 # ╟─b14a1ee9-cbdd-4fec-9303-e043e13cc63a
